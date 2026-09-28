@@ -278,7 +278,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     ],
                   ),
                 ),
-                // Débits
+                // Débits (moyen + crête, style nPerf)
                 Expanded(
                   flex: 14,
                   child: Column(
@@ -286,9 +286,18 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       Text('${r.downloadSpeed.toStringAsFixed(2)} Mb/s',
                           style: const TextStyle(
                               color: Color(0xFFCFD6E0), fontSize: 11)),
+                      if (r.downloadPeakSpeed != null &&
+                          r.downloadPeakSpeed! > 0)
+                        Text('crête ${r.downloadPeakSpeed!.toStringAsFixed(2)}',
+                            style: const TextStyle(
+                                color: Color(0xFF8FA0B8), fontSize: 9)),
                       Text('${r.uploadSpeed.toStringAsFixed(2)} Mb/s',
                           style: const TextStyle(
                               color: Color(0xFF8FA0B8), fontSize: 10)),
+                      if (r.uploadPeakSpeed != null && r.uploadPeakSpeed! > 0)
+                        Text('crête ${r.uploadPeakSpeed!.toStringAsFixed(2)}',
+                            style: const TextStyle(
+                                color: Color(0xFF8FA0B8), fontSize: 9)),
                     ],
                   ),
                 ),
@@ -360,7 +369,19 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     .where((e) => (e ?? '').isNotEmpty)
                     .join(' · ')),
           line('Réseau', r.location ?? '—'),
-          line('Latence', '${r.ping.toStringAsFixed(0)} ms'),
+          line('Débit descendant moyen',
+              '${r.downloadSpeed.toStringAsFixed(2)} Mb/s'),
+          if (r.downloadPeakSpeed != null && r.downloadPeakSpeed! > 0)
+            line('Débit descendant crête',
+                '${r.downloadPeakSpeed!.toStringAsFixed(2)} Mb/s'),
+          line('Débit montant moyen',
+              '${r.uploadSpeed.toStringAsFixed(2)} Mb/s'),
+          if (r.uploadPeakSpeed != null && r.uploadPeakSpeed! > 0)
+            line('Débit montant crête',
+                '${r.uploadPeakSpeed!.toStringAsFixed(2)} Mb/s'),
+          if (r.pingMin != null && r.pingMin! > 0)
+            line('Temps de réponse min', '${r.pingMin!.toStringAsFixed(0)} ms'),
+          line('Temps de réponse moyen', '${r.ping.toStringAsFixed(0)} ms'),
           line('Gigue', '${r.jitter.toStringAsFixed(0)} ms'),
           if (r.hasStreamingTest)
             line('Streaming',

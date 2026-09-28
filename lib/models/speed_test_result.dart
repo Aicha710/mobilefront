@@ -114,6 +114,17 @@ class SpeedTestResult extends HiveObject {
   @HiveField(33)
   String? streamingQualitiesJson;
 
+  // ── Métriques détaillées style nPerf (null = version antérieure ou phase
+  // non effectuée) ──
+  @HiveField(34)
+  double? downloadPeakSpeed; // Débit descendant de pointe (Mbps)
+
+  @HiveField(35)
+  double? uploadPeakSpeed; // Débit montant de pointe (Mbps)
+
+  @HiveField(36)
+  double? pingMin; // Latence minimale (ms)
+
   SpeedTestResult({
     String? id,
     DateTime? timestamp,
@@ -148,6 +159,9 @@ class SpeedTestResult extends HiveObject {
     this.simOperator,
     this.cellularTech,
     this.streamingQualitiesJson,
+    this.downloadPeakSpeed,
+    this.uploadPeakSpeed,
+    this.pingMin,
   }) {
     this.id = id ?? const Uuid().v4();
     this.timestamp = timestamp ?? DateTime.now();
@@ -187,6 +201,9 @@ class SpeedTestResult extends HiveObject {
       'browsingSuccessRate': browsingSuccessRate,
       'browsingPagesTested': browsingPagesTested,
       'browsingScore': browsingScore,
+      'downloadPeakSpeed': downloadPeakSpeed,
+      'uploadPeakSpeed': uploadPeakSpeed,
+      'pingMin': pingMin,
     };
   }
 
@@ -222,6 +239,15 @@ class SpeedTestResult extends HiveObject {
         if (value is int) return value;
         if (value is num) return value.toInt();
         if (value is String) return int.tryParse(value);
+      }
+      return null;
+    }
+
+    double? readDoubleOrNull(List<String> keys) {
+      for (final key in keys) {
+        final value = json[key];
+        if (value is num) return value.toDouble();
+        if (value is String) return double.tryParse(value);
       }
       return null;
     }
@@ -262,6 +288,9 @@ class SpeedTestResult extends HiveObject {
       qoeRating: readInt(['qoeRating']),
       qoeUsage: json['qoeUsage']?.toString(),
       qoeSatisfaction: json['qoeSatisfaction']?.toString(),
+      downloadPeakSpeed: readDoubleOrNull(['downloadPeakSpeed']),
+      uploadPeakSpeed: readDoubleOrNull(['uploadPeakSpeed']),
+      pingMin: readDoubleOrNull(['pingMin']),
     );
   }
 

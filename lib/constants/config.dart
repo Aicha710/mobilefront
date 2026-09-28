@@ -2,7 +2,7 @@
 
 // ========== API CONFIGURATION ==========
 // Modifier cette URL pour pointer vers votre backend speedtest-go
-const String API_BASE_URL = 'https://mobiletest-j0c6.onrender.com';
+const String API_BASE_URL = 'http://10.204.27.123:8989';
 // API MongoDB intégrée au même backend speedtest-go (/api/*)
 const String MONGO_API_BASE_URL = '$API_BASE_URL/api';
 

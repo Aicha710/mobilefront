@@ -88,10 +88,16 @@ class SpeedTransferMeasurement {
   final int bytes;
   final Duration duration;
 
+  /// Débit de pointe observé pendant le transfert (style nPerf) : maximum
+  /// des relevés de la fenêtre glissante, calculé après la montée en charge.
+  /// null si aucun relevé post-échauffement n'a été émis.
+  final double? peakMbps;
+
   const SpeedTransferMeasurement({
     required this.mbps,
     required this.bytes,
     required this.duration,
+    this.peakMbps,
   });
 }
 
@@ -99,13 +105,23 @@ class LatencyMeasurement {
   final double ping;
   final double jitter;
 
+  /// Latence minimale observée (style nPerf) : meilleur indicateur de la
+  /// latence « pure », sans encombrement des files d'attente.
+  final double pingMin;
+
   const LatencyMeasurement({
     required this.ping,
     required this.jitter,
+    this.pingMin = 0,
   });
 }
 
 typedef SpeedTestProgressCallback = void Function(SpeedTestProgress progress);
+
+/// Métriques détaillées émises après la mesure : pointe de débit descendant
+/// et montant (Mbps), latence minimale (ms). null = non mesuré.
+typedef PeakMetricsCallback = void Function(
+    double? dlPeak, double? ulPeak, double? pingMin);
 
 /// Débit en mégabits par seconde pour [bytes] transférés en [duration].
 double _mbps(int bytes, Duration duration) {
@@ -143,6 +159,11 @@ class _TransferRun {
   bool _warmupDone = false;
   int _lastEmitMs = 0;
 
+  /// Débit de pointe : maximum des relevés de la fenêtre glissante émis
+  /// après la montée en charge (le régime TCP n'y est pas encore établi).
+  double _peakMbps = 0;
+  bool _peakSeen = false;
+
   _TransferRun({required this.duration, this.onLive}) {
     _deadline = Timer(duration, () {
       if (!cancelToken.isCancelled) cancelToken.cancel('phase terminée');
@@ -170,10 +191,13 @@ class _TransferRun {
     // ~8 émissions/s : assez pour une jauge fluide, sans noyer l'UI.
     if (nowMs - _lastEmitMs < 120) return;
     _lastEmitMs = nowMs;
-    onLive!(
-      _liveMbps(nowMs),
-      (nowMs / duration.inMilliseconds).clamp(0.0, 1.0),
-    );
+    final live = _liveMbps(nowMs);
+    // Le pointe ne compte qu'une fois le régime TCP établi (échauffement).
+    if (_warmupDone && live > _peakMbps) {
+      _peakMbps = live;
+      _peakSeen = true;
+    }
+    onLive!(live, (nowMs / duration.inMilliseconds).clamp(0.0, 1.0));
   }
 
   /// Débit sur la fenêtre glissante. Au tout début la fenêtre est plus courte
@@ -201,6 +225,7 @@ class _TransferRun {
       mbps: _mbps(bytes, window),
       bytes: _totalBytes,
       duration: elapsed,
+      peakMbps: _peakSeen ? _peakMbps : null,
     );
   }
 }
@@ -252,6 +277,8 @@ class SpeedTestApiService {
     StreamingControllerCallback? onStreamingController,
     StreamingRowsCallback? onStreamingRows,
     BrowsingControllerCallback? onBrowsingController,
+    // Pointe de débit + latence min, à mesure que les phases se terminent.
+    PeakMetricsCallback? onPeak,
     // Permet à l'UI de recueillir la note QoE et de l'attacher au résultat
     // AVANT l'envoi au serveur, pour qu'elle soit incluse dans la télémétrie.
     Future<void> Function(SpeedTestResult result)? onCollectQoe,
@@ -277,6 +304,7 @@ class SpeedTestApiService {
       // Débit : exécuté uniquement si demandé (tests indépendants).
       // Ordre : download, upload, puis latence.
       double dlMbps = 0, ulMbps = 0, pingMs = 0, jitterMs = 0;
+      double? dlPeak, ulPeak, pingMin;
       if (selection.speed) {
         onProgress?.call(const SpeedTestProgress(
           phase: SpeedTestPhase.download,
@@ -292,6 +320,7 @@ class SpeedTestApiService {
           )),
         );
         dlMbps = download.mbps;
+        dlPeak = download.peakMbps;
         onProgress?.call(SpeedTestProgress(
           phase: SpeedTestPhase.download,
           message: 'Téléchargement mesuré',
@@ -313,6 +342,7 @@ class SpeedTestApiService {
           )),
         );
         ulMbps = upload.mbps;
+        ulPeak = upload.peakMbps;
 
         // La latence se mesure en dernier, donc juste après avoir saturé le
         // lien. Les files d'attente des équipements réseau mettent un instant
@@ -341,6 +371,8 @@ class SpeedTestApiService {
         );
         pingMs = latency.ping;
         jitterMs = latency.jitter;
+        pingMin = latency.pingMin > 0 ? latency.pingMin : null;
+        onPeak?.call(dlPeak, ulPeak, pingMin);
         onProgress?.call(SpeedTestProgress(
           phase: SpeedTestPhase.ping,
           message: 'Latence mesurée',
@@ -420,6 +452,9 @@ class SpeedTestApiService {
         uploadSpeed: ulMbps,
         ping: pingMs,
         jitter: jitterMs,
+        downloadPeakSpeed: dlPeak,
+        uploadPeakSpeed: ulPeak,
+        pingMin: pingMin,
         server: 'Render.com',
         clientIp: _extractIp(ipInfo),
         networkType: networkType,
@@ -684,10 +719,12 @@ class SpeedTestApiService {
 
     final ping = _avg(measurements);
     final jitter = _jitterOf(measurements);
+    final pingMin = measurements.isEmpty ? 0.0 : measurements.reduce(min);
 
     logger.i(
-        'Ping: ${ping.toStringAsFixed(2)} ms, jitter: ${jitter.toStringAsFixed(2)} ms');
-    return LatencyMeasurement(ping: ping, jitter: jitter);
+        'Ping: ${ping.toStringAsFixed(2)} ms (min: ${pingMin.toStringAsFixed(2)}), jitter: ${jitter.toStringAsFixed(2)} ms');
+    return LatencyMeasurement(
+        ping: ping, jitter: jitter, pingMin: pingMin);
   }
 
   double _avg(List<double> values) =>
@@ -757,6 +794,11 @@ class SpeedTestApiService {
             'browsingSuccessRate': result.browsingSuccessRate ?? 0.0,
             'browsingPagesTested': result.browsingPagesTested ?? 0,
             'browsingScore': result.browsingScore ?? 0.0,
+            // Métriques détaillées style nPerf : pointe de débit, latence min.
+            // 0 = non mesuré (version antérieure de l'app).
+            'downloadPeakSpeed': result.downloadPeakSpeed ?? 0.0,
+            'uploadPeakSpeed': result.uploadPeakSpeed ?? 0.0,
+            'pingMin': result.pingMin ?? 0.0,
           }),
         },
         options: Options(contentType: Headers.formUrlEncodedContentType),

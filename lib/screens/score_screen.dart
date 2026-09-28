@@ -137,31 +137,53 @@ class _ScoreScreenState extends State<ScoreScreen> {
                       color: Color(0xFF2C3650),
                       fontWeight: FontWeight.w600)),
               const SizedBox(height: 6),
-              Text(val,
+              // Une seule ligne garantie : le texte se réduit s'il est trop long.
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(val,
+                  maxLines: 1,
                   style: const TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w800,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
                       color: YeleColors.field,
-                      height: 1.1)),
-              Text(unit,
-                  style: const TextStyle(fontSize: 13, color: YeleColors.field)),
+                      height: 1.1))),
               const SizedBox(height: 3),
               Text(sub,
-                  style: const TextStyle(fontSize: 11, color: YeleColors.muted)),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      fontSize: 10,
+                      color: YeleColors.muted,
+                      height: 1.2)),
             ],
           ),
         ),
       );
     }
 
+    // Présentation nPerf : Max (débits) / Min (latence) en valeur principale,
+    // moyenne en sous-titre (+ gigue pour la latence).
+    final dlSub = 'Moy: ${r.downloadSpeed.toStringAsFixed(2)} Mb/s';
+    final ulSub = 'Moy: ${r.uploadSpeed.toStringAsFixed(2)} Mb/s';
+    final pingSub =
+        'Moy: ${r.ping.toStringAsFixed(0)} ms / Gig: ${r.jitter.toStringAsFixed(0)} ms';
+
+    final dlMain = (r.downloadPeakSpeed ?? 0) > 0
+        ? r.downloadPeakSpeed!.toStringAsFixed(2)
+        : r.downloadSpeed.toStringAsFixed(2);
+    final ulMain = (r.uploadPeakSpeed ?? 0) > 0
+        ? r.uploadPeakSpeed!.toStringAsFixed(2)
+        : r.uploadSpeed.toStringAsFixed(2);
+    final pingMain = (r.pingMin ?? 0) > 0
+        ? r.pingMin!.toStringAsFixed(0)
+        : r.ping.toStringAsFixed(0);
+
     return Container(
       color: YeleColors.panel,
       child: Row(
         children: [
-          m('▼ Download', r.downloadSpeed.toStringAsFixed(2), 'Mb/s', ''),
-          m('▲ Upload', r.uploadSpeed.toStringAsFixed(2), 'Mb/s', ''),
-          m('↔ Latence', r.ping.toStringAsFixed(0), 'ms',
-              'Gigue : ${r.jitter.toStringAsFixed(0)} ms'),
+          m('▼ Download', 'Max: $dlMain Mb/s', '', dlSub),
+          m('▲ Upload', 'Max: $ulMain Mb/s', '', ulSub),
+          m('↔ Latence', 'Min: $pingMain ms', '', pingSub),
         ],
       ),
     );

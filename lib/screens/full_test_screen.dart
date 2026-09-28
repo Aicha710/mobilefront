@@ -63,6 +63,7 @@ class _FullTestScreenState extends State<FullTestScreen>
   double _phaseProgress = 0; // avancement de la phase en cours (0-1)
 
   double _download = 0, _upload = 0, _ping = 0;
+  double? _downloadPeak, _uploadPeak, _pingMin;
 
   String _connection = '—'; // WiFi / Mobile (par où passe Internet)
   String _fai = '—'; // FAI de connexion (déduit de l'IP)
@@ -139,6 +140,7 @@ class _FullTestScreenState extends State<FullTestScreen>
       _stage = _Stage.running;
       _phaseLabel = 'Initialisation…';
       _download = _upload = _ping = 0;
+      _downloadPeak = _uploadPeak = _pingMin = null;
       _coreValue = _coreTarget = 0;
       _arc = _arcTarget = 0;
       _phaseProgress = 0;
@@ -173,6 +175,15 @@ class _FullTestScreenState extends State<FullTestScreen>
         osVersion: osVersion,
         selection: widget.selection,
         onProgress: _onProgress,
+        onPeak: (dl, ul, pingMin) {
+          if (mounted) {
+            setState(() {
+              _downloadPeak = dl;
+              _uploadPeak = ul;
+              _pingMin = pingMin;
+            });
+          }
+        },
         onStreamingController: (c) {
           if (mounted) setState(() => _stream = c);
         },
@@ -481,8 +492,47 @@ class _FullTestScreenState extends State<FullTestScreen>
     );
   }
 
+  /// Textes de métrique secondaire style nPerf : Max (débits) ou Min
+  /// (latence) en valeur principale, moyenne en sous-titre.
+  List<Widget> _metricTexts(
+      String label, double value, String unit, double? peak, double? min) {
+    final dec = unit == 'ms' ? 0 : 2;
+    final main = StringBuffer();
+    final sub = StringBuffer();
+    if (peak != null) {
+      final mx = value > peak ? value : peak;
+      main.write(mx > 0 ? 'Max: ${mx.toStringAsFixed(dec)} $unit' : 'Max: —');
+      sub.write(value > 0 ? 'Moy: ${value.toStringAsFixed(dec)} $unit' : 'Moy: —');
+    } else if (min != null) {
+      final mn = (min > 0 && min < value) ? min : (value > 0 ? value : 0.0);
+      main.write(mn > 0 ? 'Min: ${mn.toStringAsFixed(0)} $unit' : 'Min: —');
+      sub.write(value > 0 ? 'Moy: ${value.toStringAsFixed(0)} $unit' : 'Moy: —');
+    }
+    return [
+      FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
+        child: Text(main.toString(),
+            maxLines: 1,
+            style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: YeleColors.ink,
+                height: 1.15))),
+      Text(sub.toString(),
+          textAlign: TextAlign.left,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+              fontSize: 9,
+              color: Color(0xFF5A6B3A),
+              height: 1.2)),
+    ];
+  }
+
   Widget _metrics() {
-    Widget cell(String label, double value, String unit, Color color) {
+    Widget cell(String label, double value, String unit, Color color,
+        {double? peak, double? min}) {
       return Expanded(
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
@@ -500,14 +550,9 @@ class _FullTestScreenState extends State<FullTestScreen>
               const SizedBox(height: 6),
               SizedBox(height: 30, child: _miniBar(value, color)),
               const SizedBox(height: 4),
-              Text(
-                  value > 0
-                      ? '${value.toStringAsFixed(unit == 'ms' ? 0 : 1)} $unit'
-                      : '—',
-                  style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: YeleColors.ink)),
+              // Valeur principale = Max (débits) / Min (latence), style nPerf.
+              // Sous-titre = Moyenne.
+              ..._metricTexts(label, value, unit, peak, min),
             ],
           ),
         ),
@@ -518,9 +563,11 @@ class _FullTestScreenState extends State<FullTestScreen>
       color: const Color(0xFFEEF1EE),
       child: Row(
         children: [
-          cell('▼ Download', _download, 'Mb/s', YeleColors.accent),
-          cell('▲ Upload', _upload, 'Mb/s', YeleColors.good),
-          cell('↔ Latence', _ping, 'ms', YeleColors.muted),
+          cell('▼ Download', _download, 'Mb/s', YeleColors.accent,
+              peak: _downloadPeak),
+          cell('▲ Upload', _upload, 'Mb/s', YeleColors.good,
+              peak: _uploadPeak),
+          cell('↔ Latence', _ping, 'ms', YeleColors.muted, min: _pingMin),
         ],
       ),
     );
